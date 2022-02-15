@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Instruction {
     Push(u64),
     Add,
@@ -9,25 +9,15 @@ pub enum Instruction {
     },
 }
 
-// const CTRL_TOKENS: &'static [&'static str] = &["begin", "end"];
-
-// fn parse_inst_branches(pos: usize, tokens: &Vec<&str>, branch: &mut Vec<Instruction>) -> usize {
-//     let (inst, next_pos) = parse_inst(pos, tokens);
-//     match inst {
-//         Some(v) => {
-//             branch.push(v);
-//         }
-//         None => return next_pos,
-//     }
-
-//     parse_inst_branches(next_pos, tokens, branch)
-// }
-
-fn parse_inst(mut pos: usize, tokens: &Vec<&str>) -> (Option<Instruction>, usize) {
+fn parse_inst(
+    mut pos: usize,
+    tokens: &Vec<&str>,
+    t_branch: &mut Vec<Instruction>,
+    f_branch: &mut Vec<Instruction>,
+) -> (Option<Instruction>, usize) {
     if tokens.len() - 1 < pos {
         return (None, pos);
     }
-    println!("parse_inst(): pos: {} tokens[pos]: {}", pos, tokens[pos]);
 
     let inst = tokens[pos].split(".").collect::<Vec<_>>();
     let instruction = match inst[0] {
@@ -38,68 +28,36 @@ fn parse_inst(mut pos: usize, tokens: &Vec<&str>) -> (Option<Instruction>, usize
             Some(Instruction::Push(v))
         }
         "mul" => Some(Instruction::Mul),
-        "if" | "else" => {
-            let mut t_branch: Vec<Instruction> = vec![];
-            let mut f_branch: Vec<Instruction> = vec![];
+        "if" => loop {
+            let (instruction, next_pos) = parse_inst(pos + 1, tokens, t_branch, f_branch);
+            pos = next_pos;
 
-            loop {
-                // println!(
-                //     "parse_inst(): loop: pos: {}; tokens[pos]: {}",
-                //     pos, tokens[pos]
-                // );
-                let (instruction, next_pos) = parse_inst(pos + 1, tokens);
-                pos = next_pos;
-
-                println!(
-                    "parse_inst(): after loop: pos: {}; tokens[pos]: {}; instruction: {:?}; t_branch: {:?}; f_branch: {:?}",
-                    pos, tokens[pos], instruction, t_branch, f_branch
-                );
-
-                match instruction {
-                    Some(v) => match inst[0] {
-                        // println!()
-                        "if" => {
-                            t_branch.push(v);
-                            println!("parse_inst(): insert in t_branch: {:?}", t_branch);
-                        }
-                        "else" => {
-                            f_branch.push(v);
-                            println!("parse_inst(): insert in f_branch: {:?}", f_branch);
-                        }
-                        _ => {
-                            println!(
-                                "parse_inst(): break inst[0]: pos: {}; tokens[pos]: {}",
-                                pos, tokens[pos]
-                            );
-                            break;
-                        }
-                    },
-                    None => {
-                        println!(
-                            "parse_inst(): break None: pos: {}; tokens[pos]: {}",
-                            pos, tokens[pos]
-                        );
-
-                        return (instruction, pos);
-                        // break;
-                    }
-                }
+            if tokens[pos] == "endif" {
+                return (instruction, pos);
             }
 
-            println!(
-                "parse_inst(): inside if|else Some(): pos: {}; tokens[pos]: {}; t_branch: {:?}; f_branch: {:?}",
-                pos, tokens[pos], t_branch, f_branch
-            );
-            Some(Instruction::IfElse { t_branch, f_branch })
-            // let next_pos: usize;
-            // if inst[0] == "if" {
-            //     next_pos = parse_inst_branches(pos + 1, tokens, &mut t_branch);
-            // } else {
-            //     next_pos = parse_inst_branches(pos + 1, tokens, &mut f_branch);
-            // }
-            // pos = next_pos;
-        }
-        "endif" => None,
+            match instruction {
+                Some(v) => t_branch.push(v),
+                None => return (None, pos),
+            }
+        },
+        "else" => loop {
+            let (instruction, next_pos) = parse_inst(pos + 1, tokens, t_branch, f_branch);
+            pos = next_pos;
+
+            if tokens[pos] == "endif" {
+                return (instruction, pos);
+            }
+
+            match instruction {
+                Some(v) => f_branch.push(v),
+                None => return (None, pos),
+            }
+        },
+        "endif" => Some(Instruction::IfElse {
+            t_branch: t_branch.to_vec(),
+            f_branch: f_branch.to_vec(),
+        }),
         "end" => None,
         _ => panic!("pos: {}, inst: {:?}, tokens: {:?}", pos, inst, tokens),
     };
@@ -109,25 +67,18 @@ fn parse_inst(mut pos: usize, tokens: &Vec<&str>) -> (Option<Instruction>, usize
 
 pub fn parse(source: &str) -> Vec<Instruction> {
     let mut instructions: Vec<Instruction> = vec![];
+    let mut t_branch: Vec<Instruction> = vec![];
+    let mut f_branch: Vec<Instruction> = vec![];
     let tokens = source.split_whitespace().collect::<Vec<_>>();
 
     let mut pos = 0;
     while tokens.len() > pos {
-        println!(
-            "parse(): while: tokens[pos]:{:?}, pos: {}",
-            tokens[pos], pos
-        );
-        let (inst, next_pos) = parse_inst(pos + 1, &tokens);
-        println!(
-            "parse(): inst: {:?}, pos: {}, next_pos: {}",
-            inst, pos, next_pos
-        );
+        let (inst, next_pos) = parse_inst(pos + 1, &tokens, &mut t_branch, &mut f_branch);
         match inst {
             Some(v) => instructions.push(v),
             None => (),
         }
         pos = next_pos;
-        // pos += 1;
     }
 
     instructions
